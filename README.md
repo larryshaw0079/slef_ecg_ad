@@ -1,5 +1,13 @@
 # Arrhythmia Detection with Self-supervised Pre-training
 
+## Requirements
+
+- numpy
+- scipy
+- matplotlib
+- tqdm
+- pytorch >= 1.2
+
 ## Basic Usage
 
 Pre-process the dataset:
@@ -7,7 +15,12 @@ Pre-process the dataset:
 python preprocess_ecg.py
 ```
 
-Run the main procedure:
+Start training:
 ```bash
-python main.py
+python train.py
+```
+
+Start evaluating:
+```bash
+python evaluate.py
 ```

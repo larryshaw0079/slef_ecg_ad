@@ -10,11 +10,11 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from torchsummary import summary
 
-from self_ecg_ad.data import prepare_data, ECGDataset
-from self_ecg_ad.net import Classifier
-from self_ecg_ad.metric import get_performance
-from self_ecg_ad.utils import RandomTransformation, GeometricTransformation
-from self_ecg_ad.utils import simplified_normality_score, normality_score
+from src.data import prepare_data, ECGDataset
+from src.net import Classifier
+from src.metric import get_performance
+from src.utils import RandomTransformation, GeometricTransformation
+from src.utils import simplified_normality_score, normality_score
 
 
 def parse_args():

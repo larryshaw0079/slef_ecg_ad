@@ -6,8 +6,8 @@ from torch.utils.data import DataLoader
 
 sys.path.append('../')
 
-from self_ecg_ad.data import prepare_data
-from self_ecg_ad.data import ECGDataset
+from src.data import prepare_data
+from src.data import ECGDataset
 
 
 def test_prepare_data():
