@@ -4,7 +4,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-from .transformation import Transformation
+from .transforms import Transformation
 
 
 def normalize(series):

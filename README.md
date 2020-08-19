@@ -12,15 +12,15 @@
 
 Pre-process the dataset:
 ```bash
-python scripts/preprocess_ecg.py
+>> python scripts/preprocess_ecg.py --data <data dir> --dest <dest dir>
 ```
 
 Start training:
 ```bash
-python train.py
+>> python train.py
 ```
 
 Start evaluating:
 ```bash
-python evaluate.py
+>> python evaluate.py
 ```
