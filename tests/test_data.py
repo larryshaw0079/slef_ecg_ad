@@ -1,7 +1,6 @@
 import os
 import sys
 
-from tqdm.std import tqdm
 from torch.utils.data import DataLoader
 
 sys.path.append('../')
@@ -29,7 +28,6 @@ def test_ecgdataset():
     #
     # for x, y in tqdm(test_loader):
     #     print(x.shape, y.shape)
-
 
 # def test_apply_transformation():
 #     train_samples, val_samples, val_labels, test_samples, test_labels = prepare_data('./data/mit_ecg_processed/',

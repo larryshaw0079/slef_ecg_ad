@@ -1,6 +1,4 @@
 import argparse
-import pdb
-import pickle
 import os
 import warnings
 
@@ -79,7 +77,8 @@ def process_patient(patient_id, data_dir, left_range, right_range):
                     if abs(closest_r_peak - ann_idx) < 10:
                         # samples.append(([signal1[ann_idx - left_range:ann_idx + right_range],
                         #                  signal2[ann_idx - left_range:ann_idx + right_range]], 'N', symbol))
-                        samples.append([signal1[ann_idx - left_range:ann_idx + right_range], signal2[ann_idx - left_range:ann_idx + right_range]])
+                        samples.append([signal1[ann_idx - left_range:ann_idx + right_range],
+                                        signal2[ann_idx - left_range:ann_idx + right_range]])
                         # labels.append(('N', symbol))
                         labels.append('N')
                 else:
@@ -213,7 +212,7 @@ def prepare_data(data_dir, dest_dir, left_range, right_range):
     }
 
     for key, value in results.items():
-        np.save(os.path.join(dest_dir, key+'.npy'), value)
+        np.save(os.path.join(dest_dir, key + '.npy'), value)
 
     # with open(os.path.join(dest_dir, 'data.pkl'), 'wb') as f:
     #     pickle.dump(results, f)

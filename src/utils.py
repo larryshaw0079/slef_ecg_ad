@@ -1,12 +1,8 @@
-import abc
-import pdb
-
-import torch
 import numpy as np
-from tqdm.std import tqdm
-
+import torch
 from scipy.special import psi, polygamma
 from sympy import Matrix, GramSchmidt
+from tqdm.std import tqdm
 
 
 def calc_approx_alpha_sum(observations):
@@ -44,7 +40,7 @@ def dirichlet_normality_score(alpha, p):
 def normality_score(observations, predictions):
     log_observations = np.log(observations).mean(axis=0)
     alpha_sum_approx = calc_approx_alpha_sum(observations)
-    alpha_0 = observations.mean(axis=0)*alpha_sum_approx
+    alpha_0 = observations.mean(axis=0) * alpha_sum_approx
 
     mle_alpha_t = fixed_point_dirichlet_mle(alpha_0, log_observations)
     result = dirichlet_normality_score(mle_alpha_t, predictions)
@@ -65,7 +61,7 @@ def trans_flip(x, flip=True):
 
 
 def trans_roll(x, dir, shift):
-    return np.roll(x, shift=dir*shift, axis=-1)
+    return np.roll(x, shift=dir * shift, axis=-1)
 
 
 def basis_normalize(X):
@@ -98,17 +94,17 @@ class RandomTransformation(object):
     def __init__(self, length, num_trans, normalize=True, gpu=False):
         self.trans_mats = np.random.randn(num_trans, length, length).astype(np.float32)
         self.num_trans = num_trans
-        
+
         if normalize:
             for t in tqdm(range(len(self.trans_mats))):
                 self.trans_mats[t] = basis_normalize(self.trans_mats[t])
-                
+
         self.trans_mats = torch.from_numpy(self.trans_mats)
         if gpu:
             self.trans_mats = self.trans_mats.cuda()
 
     def apply_transformation_single(self, x, ind):
-        return x@self.trans_mats[ind]
+        return x @ self.trans_mats[ind]
 
     def apply_transformation_all(self, x):
         out = torch.cat([self.apply_transformation_single(x, i) for i in range(self.num_trans)])

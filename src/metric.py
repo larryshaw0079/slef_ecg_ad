@@ -1,10 +1,8 @@
 import numpy as np
-from tqdm.std import tqdm
-
 from matplotlib import pyplot as plt
-
 from sklearn.metrics import precision_score, recall_score, f1_score
 from sklearn.metrics import roc_curve, average_precision_score, precision_recall_curve, auc
+from tqdm.std import tqdm
 
 
 def get_performance(y_score, y_true, plot=False):
@@ -26,7 +24,7 @@ def get_performance(y_score, y_true, plot=False):
     score_scaled = (y_score - np.min(y_score)) / (np.max(y_score) - np.min(y_score))
     roc_fprs, roc_tprs, _ = roc_curve(y_true, score_scaled)
     roc_auc = auc(roc_fprs, roc_tprs)
-    
+
     pr_precisions, pr_recalls, _ = precision_recall_curve(y_true, score_scaled)
     # inds = np.argsort(pr_precisions)
     pr_auc = auc(pr_recalls, pr_precisions)
@@ -38,7 +36,7 @@ def get_performance(y_score, y_true, plot=False):
 
     if plot:
         roc_fig, roc_ax = plt.subplots()
-        roc_ax.plot(roc_fprs, roc_tprs, color='darkorange', lw=1.0, label='ROC Curve (area = %.2f)'%roc_auc)
+        roc_ax.plot(roc_fprs, roc_tprs, color='darkorange', lw=1.0, label='ROC Curve (area = %.2f)' % roc_auc)
         roc_ax.plot([0, 1], [0, 1], color='navy', lw=1.0, linestyle='--')
         roc_ax.set_xlim([0.0, 1.0])
         roc_ax.set_ylim([0.0, 1.05])

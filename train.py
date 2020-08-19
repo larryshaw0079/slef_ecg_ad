@@ -1,19 +1,17 @@
-import os
-import pdb
 import argparse
+import os
 
 import numpy as np
-from tqdm.std import tqdm
-
 import torch
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from torchsummary import summary
+from tqdm.std import tqdm
 
 from src.data import prepare_data, ECGDataset
-from src.net import Classifier
 from src.metric import get_performance
-from src.utils import RandomTransformation, GeometricTransformation
+from src.net import Classifier
+from src.utils import RandomTransformation
 from src.utils import simplified_normality_score, normality_score
 
 
@@ -49,7 +47,7 @@ def train(model, args, writer, transformation, train_loader, val_loader, criteri
         with tqdm(train_loader, desc='EPOCH [%d/%d]' % (i + 1, args.epoch)) as loader:
             for x in loader:
                 x = transformation.apply_transformation_all(x)
-                y = torch.cat([torch.full((args.batch_size, ), i, dtype=torch.long) for i in range(args.num_trans)])
+                y = torch.cat([torch.full((args.batch_size,), i, dtype=torch.long) for i in range(args.num_trans)])
                 x, y = x.cuda(), y.cuda()
 
                 y_hat = model(x)
@@ -62,7 +60,8 @@ def train(model, args, writer, transformation, train_loader, val_loader, criteri
 
                 loader.set_postfix({'loss': np.mean(train_losses)})
 
-        performance = evaluate(model, args, writer, transformation, train_loader, val_loader, test_mode='val', score_mode=args.score_mode)
+        performance = evaluate(model, args, writer, transformation, train_loader, val_loader, test_mode='val',
+                               score_mode=args.score_mode)
         model.train()
         writer.add_scalar('Loss/train', np.mean(train_losses), i)
         writer.add_scalar('Metrics/f1', performance['f1'], i)
@@ -211,7 +210,8 @@ if __name__ == '__main__':
         train(model, args, writer, transformation, train_loader, val_loader, criterion, optimizer)
 
     print('Start evaluating...')
-    performance, roc_fig, pr_fig = evaluate(model, args, writer, transformation, train_loader, test_loader, test_mode='test', score_mode=args.score_mode)
+    performance, roc_fig, pr_fig = evaluate(model, args, writer, transformation, train_loader, test_loader,
+                                            test_mode='test', score_mode=args.score_mode)
 
     roc_fig.savefig(os.path.join(args.save, 'roc_curve.svg'))
     pr_fig.savefig(os.path.join(args.save, 'pr_curve.svg'))

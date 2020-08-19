@@ -1,9 +1,8 @@
 import sys
-import pytest
 
 sys.path.append('..')
 
-from preprocess_ecg import process_patient, prepare_data
+from preprocess_ecg import process_patient
 
 
 def test_process_patient():
