@@ -12,7 +12,7 @@
 
 Pre-process the dataset:
 ```bash
-python preprocess_ecg.py
+python scripts/preprocess_ecg.py
 ```
 
 Start training:

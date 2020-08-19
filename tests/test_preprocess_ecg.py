@@ -2,7 +2,7 @@ import sys
 
 sys.path.append('..')
 
-from preprocess_ecg import process_patient
+from scripts.preprocessing import process_patient
 
 
 def test_process_patient():

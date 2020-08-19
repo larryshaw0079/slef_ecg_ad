@@ -4,6 +4,8 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
+from .transformation import Transformation
+
 
 def normalize(series):
     return (series - np.min(series)) / (np.max(series) - np.min(series))

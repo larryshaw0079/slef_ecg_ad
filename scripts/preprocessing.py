@@ -4,6 +4,7 @@ import warnings
 
 import numpy as np
 import wfdb
+import scipy.io as sio
 from biosppy.signals import ecg
 from tqdm.std import tqdm
 
@@ -37,7 +38,7 @@ def parse_args():
     return arg_parser.parse_args()
 
 
-def process_patient(patient_id, data_dir, left_range, right_range):
+def process_patient(patient_id: int, data_dir: str, left_range: int, right_range: int):
     samples = []
     labels = []
 
@@ -104,69 +105,21 @@ def process_patient(patient_id, data_dir, left_range, right_range):
     return np.asarray(samples), np.asarray(labels)
 
 
-def prepare_data(data_dir, dest_dir, left_range, right_range):
-    all_samples = []
-    all_labels = []
-    N_samples = []
-    V_samples = []
-    S_samples = []
-    F_samples = []
-    Q_samples = []
-
+def prepare_data(data_dir: str, dest_dir: str, left_range: int, right_range: int):
     print('====================BEGINNING====================')
+
+    data_x = []
+    data_y = []
 
     for patient_id in tqdm(PATIENTS):
         # samples: (num_sample, num_channel, length), labels: (num_sample)
         samples, labels = process_patient(patient_id, data_dir, left_range, right_range)
 
-        # for i, sample in enumerate(samples):
-        #     all_samples.append(sample)
-        #     if labels[i] == 'N':
-        #         N_samples.append(sample)
-        #     elif labels[i] == 'S':
-        #         S_samples.append(sample)
-        #     elif labels[i] == 'V':
-        #         V_samples.append(sample)
-        #     elif labels[i] == 'F':
-        #         F_samples.append(sample)
-        #     elif labels[i] == 'Q':
-        #         Q_samples.append(sample)
-        #     else:
-        #         raise ValueError('Invalid AAMI type of {}!'.format(labels[i]))
+        data_x.append(samples)
+        data_y.append(labels.reshape((-1, 1)))
 
-        all_samples.append(samples)
-        all_labels.append(labels.reshape((-1, 1)))
-        if samples[labels == 'N'].shape[0] != 0:
-            N_samples.append(samples[labels == 'N'])
-        if samples[labels == 'S'].shape[0] != 0:
-            S_samples.append(samples[labels == 'S'])
-        if samples[labels == 'V'].shape[0] != 0:
-            V_samples.append(samples[labels == 'V'])
-        if samples[labels == 'F'].shape[0] != 0:
-            F_samples.append(samples[labels == 'F'])
-        if samples[labels == 'Q'].shape[0] != 0:
-            Q_samples.append(samples[labels == 'Q'])
-
-    all_samples = np.concatenate(all_samples)
-    all_labels = np.concatenate(all_labels)
-    N_samples = np.concatenate(N_samples)
-    V_samples = np.concatenate(V_samples)
-    S_samples = np.concatenate(S_samples)
-    F_samples = np.concatenate(F_samples)
-    Q_samples = np.concatenate(Q_samples)
-
-    # all_samples = np.asarray(all_samples)
-    # N_samples = np.asarray(N_samples)
-    # V_samples = np.asarray(V_samples)
-    # S_samples = np.asarray(S_samples)
-    # F_samples = np.asarray(F_samples)
-    # Q_samples = np.asarray(Q_samples)
-
-    # np.random.shuffle(N_samples)
-    # np.random.shuffle(V_samples)
-    # np.random.shuffle(S_samples)
-    # np.random.shuffle(F_samples)
-    # np.random.shuffle(Q_samples)
+    data_x = np.concatenate(data_x)
+    data_y = np.concatenate(data_y)
 
     # if anomaly_ratio > 0.0:
     #     anomaly_num = V_samples.shape[0] + S_samples.shape[0] + F_samples.shape[0] + Q_samples.shape[0]
@@ -201,28 +154,7 @@ def prepare_data(data_dir, dest_dir, left_range, right_range):
         warnings.warn('Path {} dose not exist, created'.format(dest_dir))
         os.makedirs(dest_dir)
 
-    results = {
-        'all_samples': all_samples,
-        'all_labels': all_labels,
-        'N_samples': N_samples,
-        'V_samples': V_samples,
-        'S_samples': S_samples,
-        'F_samples': F_samples,
-        'Q_samples': Q_samples
-    }
-
-    for key, value in results.items():
-        np.save(os.path.join(dest_dir, key + '.npy'), value)
-
-    # with open(os.path.join(dest_dir, 'data.pkl'), 'wb') as f:
-    #     pickle.dump(results, f)
-
-    # np.save(os.path.join(dest_dir, 'all_samples.npy'), all_samples)
-    # np.save(os.path.join(dest_dir, "N_samples.npy"), N_samples)
-    # np.save(os.path.join(dest_dir, "V_samples.npy"), V_samples)
-    # np.save(os.path.join(dest_dir, "S_samples.npy"), S_samples)
-    # np.save(os.path.join(dest_dir, "F_samples.npy"), F_samples)
-    # np.save(os.path.join(dest_dir, "Q_samples.npy"), Q_samples)
+    sio.savemat(os.path.join(dest_dir, 'mit_ecg.mat'), {'data': data_x, 'label': data_y})
 
     print('====================FINISHED====================')
 
