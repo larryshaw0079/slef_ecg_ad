@@ -1,112 +1,175 @@
-import torch
+import math
+
 import torch.nn as nn
-import torch.nn.functional as F
 
 
-class Conv1dSamePadding(nn.Conv1d):
-    """Represents the "Same" padding functionality from Tensorflow.
-    See: https://github.com/pytorch/pytorch/issues/3867
-    Note that the padding argument in the initializer doesn't do anything now
-    """
-    def forward(self, input):
-        return conv1d_same_padding(input, self.weight, self.bias, self.stride,
-                                   self.dilation, self.groups)
+class ResidualBlock(nn.Module):
+    def __init__(self, input_channels: int, output_channels: int, stride: int = 1):
+        super(ResidualBlock, self).__init__()
+        self.input_channels = input_channels
+        self.output_channels = output_channels
+        self.stride = stride
 
-
-def conv1d_same_padding(input, weight, bias, stride, dilation, groups):
-    # stride and dilation are expected to be tuples.
-    kernel, dilation, stride = weight.size(2), dilation[0], stride[0]
-    l_out = l_in = input.size(2)
-    padding = (((l_out - 1) * stride) - l_in + (dilation * (kernel - 1)) + 1)
-    if padding % 2 != 0:
-        input = F.pad(input, [0, 1])
-
-    return F.conv1d(input=input, weight=weight, bias=bias, stride=stride,
-                    padding=padding // 2,
-                    dilation=dilation, groups=groups)
-
-
-class ConvBlock(nn.Module):
-
-    def __init__(self, in_channels: int, out_channels: int, kernel_size: int,
-                 stride: int) -> None:
-        super().__init__()
-
-        self.layers = nn.Sequential(
-            Conv1dSamePadding(in_channels=in_channels,
-                              out_channels=out_channels,
-                              kernel_size=kernel_size,
-                              stride=stride),
-            nn.BatchNorm1d(num_features=out_channels),
-            nn.ReLU(),
+        self.conv1 = nn.Sequential(
+            nn.Conv1d(input_channels, output_channels, kernel_size=7, stride=1, padding=3, bias=False),
+            nn.BatchNorm1d(output_channels),
+            nn.ReLU(inplace=True)
         )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:  # type: ignore
+        # Only conv2 degrades the scale
+        self.conv2 = nn.Sequential(
+            nn.Conv1d(output_channels, output_channels, kernel_size=11, stride=stride, padding=5, bias=False),
+            nn.BatchNorm1d(output_channels),
+            nn.ReLU(inplace=True),
+        )
 
-        return self.layers(x)
+        self.conv3 = nn.Sequential(
+            nn.Conv1d(output_channels, output_channels, kernel_size=7, stride=1, padding=3, bias=False),
+            nn.BatchNorm1d(output_channels),
+        )
 
+        self.relu = nn.ReLU(inplace=True)
 
-class ResNetBaseline(nn.Module):
-    """A PyTorch implementation of the ResNet Baseline
-    From https://arxiv.org/abs/1909.04939
-    Attributes
-    ----------
-    sequence_length:
-        The size of the input sequence
-    mid_channels:
-        The 3 residual blocks will have as output channels:
-        [mid_channels, mid_channels * 2, mid_channels * 2]
-    num_pred_classes:
-        The number of output classes
-    """
+        # If stride == 1, the length of the time dimension will not be changed
+        # If input_channels == output_channels, the number of channels will not be changed
+        # If the channels are mismatch, the conv1d is used to upgrade the channel
+        # If the time dimensions are mismatch, the conv1d is used to downsample the scale
+        self.downsample = nn.Sequential()
+        if stride != 1 or input_channels != output_channels:
+            self.downsample = nn.Sequential(
+                nn.Conv1d(input_channels, output_channels, kernel_size=1, stride=stride, padding=0, bias=False),
+                nn.BatchNorm1d(output_channels)
+            )
 
-    def __init__(self, in_channels: int, mid_channels: int = 64,
-                 num_pred_classes: int = 1) -> None:
-        super().__init__()
+    def forward(self, x):
+        residual = x
 
-        # for easier saving and loading
-        self.input_args = {
-            'in_channels': in_channels,
-            'num_pred_classes': num_pred_classes
-        }
+        out = self.conv1(x)
+        out = self.conv2(out)
+        out = self.conv3(out)
 
-        self.layers = nn.Sequential(*[
-            ResNetBlock(in_channels=in_channels, out_channels=mid_channels),
-            ResNetBlock(in_channels=mid_channels, out_channels=mid_channels * 2),
-            ResNetBlock(in_channels=mid_channels * 2, out_channels=mid_channels * 2),
+        residual = self.downsample(x)  # Downsampe is an empty list if the size of inputs and outputs are same
+        out += residual
+        out = self.relu(out)
 
-        ])
-        self.final = nn.Linear(mid_channels * 2, num_pred_classes)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:  # type: ignore
-        x = self.layers(x)
-        return self.final(x.mean(dim=-1))
+        return out
 
 
-class ResNetBlock(nn.Module):
+class ResidualBlockDilated(nn.Module):
+    def __init__(self, input_channels: int, output_channels: int, stride: int = 1):
+        super(ResidualBlockDilated, self).__init__()
+        self.input_channels = input_channels
+        self.output_channels = output_channels
+        self.stride = stride
 
-    def __init__(self, in_channels: int, out_channels: int) -> None:
-        super().__init__()
+        self.conv1 = nn.Sequential(
+            nn.Conv1d(input_channels, output_channels, kernel_size=3, dilation=1, stride=1, padding=1, bias=False),
+            nn.BatchNorm1d(output_channels),
+            nn.ReLU(inplace=True)
+        )
 
-        channels = [in_channels, out_channels, out_channels, out_channels]
-        kernel_sizes = [8, 5, 3]
+        # Only conv2 degrades the scale
+        self.conv2 = nn.Sequential(
+            nn.Conv1d(output_channels, output_channels, kernel_size=3, dilation=2, stride=stride, padding=2,
+                      bias=False),
+            nn.BatchNorm1d(output_channels),
+            nn.ReLU(inplace=True),
+        )
 
-        self.layers = nn.Sequential(*[
-            ConvBlock(in_channels=channels[i], out_channels=channels[i + 1],
-                      kernel_size=kernel_sizes[i], stride=1) for i in range(len(kernel_sizes))
-        ])
+        self.conv3 = nn.Sequential(
+            nn.Conv1d(output_channels, output_channels, kernel_size=3, dilation=4, stride=1, padding=4, bias=False),
+            nn.BatchNorm1d(output_channels),
+        )
 
-        self.match_channels = False
-        if in_channels != out_channels:
-            self.match_channels = True
-            self.residual = nn.Sequential(*[
-                Conv1dSamePadding(in_channels=in_channels, out_channels=out_channels,
-                                  kernel_size=1, stride=1),
-                nn.BatchNorm1d(num_features=out_channels)
-            ])
+        self.relu = nn.ReLU(inplace=True)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:  # type: ignore
+        # If stride == 1, the length of the time dimension will not be changed
+        # If input_channels == output_channels, the number of channels will not be changed
+        # If the channels are mismatch, the conv1d is used to upgrade the channel
+        # If the time dimensions are mismatch, the conv1d is used to downsample the scale
+        self.downsample = nn.Sequential()
+        if stride != 1 or input_channels != output_channels:
+            self.downsample = nn.Sequential(
+                nn.Conv1d(input_channels, output_channels, kernel_size=1, stride=stride, padding=0, bias=False),
+                nn.BatchNorm1d(output_channels)
+            )
 
-        if self.match_channels:
-            return self.layers(x) + self.residual(x)
-        return self.layers(x)
+    def forward(self, x):
+        residual = x
+
+        out = self.conv1(x)  # + self.conv12(x)
+        out = self.conv2(out)  # + self.conv22(out)
+        out = self.conv3(out)  # + self.conv32(out)
+
+        residual = self.downsample(x)  # Downsampe is an empty list if the size of inputs and outputs are same
+        out += residual
+        out = self.relu(out)
+
+        return out
+
+
+class ResNet(nn.Module):
+    def __init__(self, input_channels: int, hidden_channels: int, num_classes: int):
+        super(ResNet, self).__init__()
+
+        # The first convolution layer
+        self.conv1 = nn.Sequential(
+            nn.Conv1d(input_channels, hidden_channels, kernel_size=15, stride=2, padding=7, bias=False),
+            nn.BatchNorm1d(hidden_channels),
+            nn.ReLU(inplace=True),
+            nn.MaxPool1d(kernel_size=3, stride=2, padding=1)
+        )
+
+        # Residual layers
+        self.layer1 = self.__make_layer(ResidualBlockDilated, hidden_channels, hidden_channels, 2, stride=1)
+        self.layer2 = self.__make_layer(ResidualBlockDilated, hidden_channels, hidden_channels * 2, 2, stride=2)
+        self.layer3 = self.__make_layer(ResidualBlockDilated, hidden_channels * 2, hidden_channels * 4, 2, stride=2)
+        self.layer4 = self.__make_layer(ResidualBlockDilated, hidden_channels * 4, hidden_channels * 8, 2, stride=2)
+
+        self.avg_pool = nn.AdaptiveAvgPool1d(
+            1)  # Pooling operation computes the average of the last dimension (time dimension)
+
+        # A dense layer for output
+        self.fc = nn.Linear(hidden_channels * 8, num_classes)
+
+        # Initialize weights
+        for m in self.modules():
+            if isinstance(m, nn.Conv1d):
+                n = m.kernel_size[0] * m.kernel_size[0] * m.out_channels
+                m.weight.data.normal_(0, math.sqrt(2. / n))
+            elif isinstance(m, nn.BatchNorm1d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+
+    def __make_layer(self, block, input_channels, output_channels, num_blocks, stride):
+        """
+        Get the residual layer
+        @param block: The residual block
+        @param input_channels: The number of input channels
+        @param output_channels: The number of output channels
+        @param num_blocks: The number of blocks in the layer
+        @param stride: The stride of the convolution layer
+        @return Torch.nn.Sequential
+        """
+        layers = []
+        layers.append(block(input_channels, output_channels, stride=stride))
+        for i in range(1, num_blocks):
+            layers.append(block(output_channels, output_channels, stride=1))
+        return nn.Sequential(*layers)
+
+    def forward(self, x):
+        """
+        L_out = floor[(L_in + 2*padding - kernel) / stride + 1]
+        @param x: (batch_size: 200, num_channels: 12, time_length: 5000)
+        """
+        out = self.conv1(x)  # (batch_size, num_channels: 64, time_length: 2500)
+        out = self.layer1(out)  # (batch_size, num_channels: 64, time_length: 2500)
+        out = self.layer2(out)  # (batch_size, num_channels: 128, time_length: 1250)
+        out = self.layer3(out)  # (batch_size, num_channels: 256, time_length: 625)
+        out = self.layer4(out)  # (batch_size, num_channels: 512, time_length: 313)
+
+        out = self.avg_pool(out)  # (batch_size, num_channels: 512, time_length: 1)
+        out = out.view(x.size(0), -1)  # (batch_size, num_channels: 512)
+        out = self.fc(out)  # (batch_size, num_channels: 55)
+
+        return out

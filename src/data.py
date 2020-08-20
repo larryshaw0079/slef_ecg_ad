@@ -4,8 +4,6 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-from .transforms import Transformation
-
 
 def normalize(series):
     return (series - np.min(series)) / (np.max(series) - np.min(series))
@@ -98,21 +96,3 @@ def prepare_data(data_path, train_val_test_split=(5, 2, 3), val_anomaly_ratio=0.
         print('Test size: ', test_samples.shape)
 
     return train_samples, val_samples, val_labels, test_samples, test_labels
-
-# def apply_transformation(samples, num_trans, trans_mats=None):
-#     assert samples.ndim == 3
-#
-#     if trans_mats is None:
-#         trans_mats = np.random.randn(num_trans, samples.shape[-1], samples.shape[-1])
-#
-#     trans_samples = [samples@trans_mats[i] for i in range(num_trans)]
-#     trans_samples = np.concatenate(trans_samples)
-#
-#     trans_labels = [np.ones(samples.shape[0], dtype=np.int)*i for i in range(num_trans)]
-#     trans_labels = np.concatenate(trans_labels)
-#     # trans_labels = OneHotEncoder().fit_transform(trans_labels)
-#
-#     # if isinstance(trans_labels, sparse.csr_matrix):
-#     #     trans_labels = trans_labels.toarray()
-#
-#     return trans_samples.astype(np.float32), trans_labels.astype(np.int64)
