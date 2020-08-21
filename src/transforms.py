@@ -1,13 +1,9 @@
-import itertools
 import abc
-from typing import Union, List
+from typing import List
 
 import numpy as np
+from numba import njit
 from scipy.interpolate import CubicSpline
-from tqdm.std import tqdm
-
-import torch
-
 
 
 class BaseTransform(abc.ABC):
@@ -16,6 +12,12 @@ class BaseTransform(abc.ABC):
 
     def __call__(self, *args, **kwargs):
         pass
+
+    def get_params(self):
+        return self.__dict__
+
+    def set_params(self, **kwargs):
+        self.__dict__.update(kwargs)
 
 
 class Compose(BaseTransform):
@@ -35,7 +37,10 @@ class GaussianNoise(BaseTransform):
         self.__sigma = sigma
 
     def __call__(self, x: np.ndarray):
-        return x + np.random.normal(loc=0, scale=self.__sigma, size=x.shape)
+        # x shape: (batch, channel, len)
+        # noise shape: (1, 1, len)
+        # Broadcast to each channel and sample
+        return x + np.random.normal(loc=0, scale=self.__sigma, size=(1, 1, x.shape[2]))
 
 
 class Scale(BaseTransform):
@@ -61,7 +66,7 @@ class Flip(BaseTransform):
         self.__is_flip = is_flip
 
     def __call__(self, x: np.ndarray):
-        return x[:,:,::-1] if self.__is_flip else x
+        return x[:, :, ::-1] if self.__is_flip else x
 
 
 class Permutation(BaseTransform):
@@ -69,113 +74,61 @@ class Permutation(BaseTransform):
 
     Parameters
     ----------
-    length :
+    x_length :
     permutation : np.random.permutation(np.arange(num_segment))
     """
-    def __init__(self, length: int, permutation: List[int]):
+
+    def __init__(self, x_length: int, permutation: np.ndarray):
         super(Permutation, self).__init__()
-        self.__length = length
+        self.__length = x_length
         self.__permutation = permutation
+        assert self.__permutation.ndim == 1
         self.__num_segment = len(self.__permutation)
         assert self.__length % self.__num_segment == 0
         self.__len_segment = self.__length // self.__num_segment
         self.__inds = np.tile(np.arange(self.__len_segment), self.__num_segment)
-        self.__inds = self.__inds + np.concatenate([np.full(shape=self.__len_segment, fill_value=i*self.__len_segment) for i in self.__permutation])
+        self.__inds = self.__inds + np.concatenate(
+            [np.full(shape=self.__len_segment, fill_value=i * self.__len_segment) for i in self.__permutation])
 
     def __call__(self, x: np.ndarray):
         return x[:, :, self.__inds]
 
 
 class TimeWrap(BaseTransform):
-    def __init__(self):
+    def __init__(self, base_curve: np.ndarray):
         super(TimeWrap, self).__init__()
 
-    @staticmethod
-    def random_curve(X, sigma=0.2, knot=4):
-        xx = (np.ones((X.shape[1], 1)) * (np.arange(0, X.shape[0], (X.shape[0] - 1) / (knot + 1)))).transpose()
-        yy = np.random.normal(loc=1.0, scale=sigma, size=(knot + 2, X.shape[1]))
-        x_range = np.arange(X.shape[0])
-        cs_x = CubicSpline(xx[:, 0], yy[:, 0])
-        cs_y = CubicSpline(xx[:, 1], yy[:, 1])
-        cs_z = CubicSpline(xx[:, 2], yy[:, 2])
-        return np.array([cs_x(x_range), cs_y(x_range), cs_z(x_range)]).transpose()
+        self.__base_curve = base_curve
 
     @staticmethod
-    def distort_timestep(X, sigma=0.2):
-        tt = TimeWrap.random_curve(X, sigma)  # Regard these samples aroun 1 as time intervals
-        tt_cum = np.cumsum(tt, axis=0)  # Add intervals to make a cumulative graph
+    def random_curve(x_length: int, sigma: float = 0.2, knot: int = 4) -> np.ndarray:
+        xx = np.arange(0, x_length, (x_length - 1) / (knot + 1))
+        yy = np.random.normal(loc=1.0, scale=sigma, size=(knot + 2))
+        x_range = np.arange(x_length)
+        cs_x = CubicSpline(xx, yy)
+
+        return np.array(cs_x(x_range))
+
+    def __distort_timestep(self, x_length: int) -> np.ndarray:
+        timestamp_cumsum = np.cumsum(self.__base_curve)  # Add intervals to make a cumulative graph
         # Make the last value to have X.shape[0]
-        t_scale = [(X.shape[0] - 1) / tt_cum[-1, 0], (X.shape[0] - 1) / tt_cum[-1, 1], (X.shape[0] - 1) / tt_cum[-1, 2]]
-        tt_cum[:, 0] = tt_cum[:, 0] * t_scale[0]
-        tt_cum[:, 1] = tt_cum[:, 1] * t_scale[1]
-        tt_cum[:, 2] = tt_cum[:, 2] * t_scale[2]
-        return tt_cum
+        timestamp_cumsum = timestamp_cumsum * (x_length - 1) / timestamp_cumsum[-1]
 
-    @staticmethod
-    def time_wrap(X, sigma=0.2):
-        tt_new = TimeWrap.distort_timestep(X, sigma)
-        X_new = np.zeros(X.shape)
-        x_range = np.arange(X.shape[0])
-        X_new[:, 0] = np.interp(x_range, tt_new[:, 0], X[:, 0])
-        X_new[:, 1] = np.interp(x_range, tt_new[:, 1], X[:, 1])
-        X_new[:, 2] = np.interp(x_range, tt_new[:, 2], X[:, 2])
-        return X_new
+        return timestamp_cumsum
+
+    def __time_wrap(self, x: np.ndarray) -> np.ndarray:
+        new_timestamp = self.__distort_timestep(x.shape[-1])
+        x_new = np.zeros(x.shape)
+        x_range = np.arange(x.shape[-1])
+
+        @njit
+        def process(x_new_, x_range_, new_timestamp_, x_):
+            for i in range(x_new_.shape[0]):
+                for j in range(x_new_.shape[1]):
+                    x_new_[i, j] = np.interp(x_range_, new_timestamp_, x_[i, j])
+            return x_new_
+
+        return process(x_new, x_range, new_timestamp, x)
 
     def __call__(self, x: np.ndarray):
-        pass
-
-
-class Transformation(object):
-    def __init__(self, image_width, image_height):
-        self.flip_params = [True, False]
-        self.translation_x_params = [0, -int(image_width*0.25), int(image_width*0.25)]
-        self.translation_y_params = [0, -int(image_height*0.25), int(image_height*0.25)]
-        self.rotation_params = [0, 1, 2, 3]
-
-        self.param_list = itertools.product(*tuple([self.flip_params, self.translation_x_params,
-                                                   self.translation_y_params, self.rotation_params]))
-        self.num_transformation = len(self.flip_params)*len(self.translation_x_params)*len(self.translation_y_params)*len(self.rotation_params)
-
-    @staticmethod
-    def transform_gaussian_noise(x: np.ndarray):
-        return x + np.random.randn(x.shape)
-
-    @staticmethod
-    def transform_scaling(x: np.ndarray, factor: float=1.0):
-        return x*factor
-
-    @staticmethod
-    def transform_negation(x: np.ndarray):
-        return x*-1
-
-    @staticmethod
-    def transform_flipping(x: np.ndarray):
-        return x[:,::-1]
-
-    @staticmethod
-    def transform_permutation(x: np.ndarray):
-        pass
-
-    @staticmethod
-    def transform_time_wrapping(x: np.ndarray):
-        pass
-
-    def transform_batch(self, x: Union[np.ndarray, torch.Tensor]):
-        if isinstance(x, np.ndarray):
-            results = np.zeros((x.shape[0], self.num, *x.shape[1:]))
-
-            for i in tqdm(range(x.shape[0]), desc='TRANSFORMATION'):
-                for j, (is_flip, tx, ty, k_rotate) in enumerate(self.param_list):
-                    results[i, j] = self.transform_array(x[i], is_flip, k_rotate, tx, ty)
-
-            return results.reshape(-1, *results.shape[-3:]), np.tile(np.arange(self.num), x.shape[0])
-        elif isinstance(x, torch.Tensor):
-            results = torch.zeros((x.shape[0], self.num, *x.shape[1:]))
-
-            for i in tqdm(range(x.shape[0]), desc='TRANSFORMATION'):
-                for j, (is_flip, tx, ty, k_rotate) in enumerate(self.param_list):
-                    results[i, j] = self.transform_tensor(x[i], is_flip, k_rotate, tx, ty)
-
-            return results.reshape(-1, *results.shape[-3:]), torch.arange(self.num).repeat(x.shape[0])
-        else:
-            raise ValueError
+        return self.__time_wrap(x)
