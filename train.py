@@ -179,13 +179,13 @@ if __name__ == '__main__':
 
     train_samples, val_samples, val_labels, test_samples, test_labels = prepare_data(args.data)
 
-    train_dataset = ECGDataset(train_samples, is_normalize=True, num_channel=args.num_channel)
+    train_dataset = ECGDataset(train_samples, normalize=True, num_channel=args.num_channel)
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, num_workers=4, shuffle=True, drop_last=True)
 
-    val_dataset = ECGDataset(val_samples, val_labels, is_normalize=True, num_channel=args.num_channel)
+    val_dataset = ECGDataset(val_samples, val_labels, normalize=True, num_channel=args.num_channel)
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size, num_workers=4, shuffle=False, drop_last=True)
 
-    test_dataset = ECGDataset(test_samples, test_labels, is_normalize=True, num_channel=args.num_channel)
+    test_dataset = ECGDataset(test_samples, test_labels, normalize=True, num_channel=args.num_channel)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, num_workers=4, shuffle=False, drop_last=True)
 
     model = Classifier(input_length=args.length, input_channel=args.num_channel, num_class=args.num_trans).cuda()

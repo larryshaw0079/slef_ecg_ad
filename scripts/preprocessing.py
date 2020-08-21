@@ -3,8 +3,8 @@ import os
 import warnings
 
 import numpy as np
-import wfdb
 import scipy.io as sio
+import wfdb
 from biosppy.signals import ecg
 from tqdm.std import tqdm
 
