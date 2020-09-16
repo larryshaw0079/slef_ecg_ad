@@ -2,7 +2,7 @@ import sys
 
 sys.path.append('..')
 
-from scripts.preprocessing import process_patient
+from scripts.process_mitecg import process_patient
 
 
 def test_process_patient():
